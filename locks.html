@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+.minigame{
+	position:absolute;
+	border:2px solid black;
+	width:500px;
+	height:200;
+}
+</style>
+<script type='text/javascript'>
+
+//util
+function rint(n) { return Math.floor(Math.random()*n); }
+function shuffle(o){ //v1.0
+    for(var j, x, i = o.length; i; j = Math.floor(Math.random() * i), x = o[--i], o[i] = o[j], o[j] = x);
+    return o;
+};
+//end util
+
+function makeMinigame(callback, difficulty){
+	G = {};
+	G.difficulty = difficulty || 0;
+	if(G.difficulty > 4) G.difficulty = 4;
+	var that = G;
+	G.callback = callback;
+	G.mFrame = document.createElement('canvas');
+	G.mFrame.className = 'minigame';
+	G.mGfx = G.mFrame.getContext('2d');
+	G.completed = false;
+	G.state = "normal";
+	G.posx = 0;
+	G.posy = 0;
+	G.numPins = 3;
+	G.bitDepth = 4;
+	document.body.appendChild(G.mFrame);
+
+	switch(G.difficulty) {
+		case 0:
+			G.numPins = 3;
+			G.bitDepth = 4;
+			break;
+		case 1:
+			G.numPins = 4;
+			G.bitDepth = 5;
+			break;
+		case 2:
+			G.numPins = 5;
+			G.bitDepth = 5;
+			break;
+		case 3:
+			G.numPins = 5;
+			G.bitDepth = 6;
+			break;
+		case 4:
+			G.numPins = 6;
+			G.bitDepth = 8;
+			break;
+	}
+
+
+	G.pinOrder = [];
+	G.bitting = [];
+	G.pinPos = [];
+	G.pinStuck = [];
+	G.stuckIndex = 0;
+	for(var i = 0; i < G.numPins; i++){
+		G.bitting.push(rint(G.bitDepth)+1);
+		G.pinOrder.push(i);
+		G.pinPos[i] = 0;
+	}
+	G.pinOrder = shuffle(G.pinOrder);
+	G.stickingPin = G.pinOrder[0];
+
+	G.reset = function(){
+		G.state = "reset";
+		G.stickingPin = G.pinOrder[0];
+		for(var i = 0; i < G.numPins; i++){
+			G.pinPos[i] = 0;
+		}
+		G.pinStuck = [];
+		G.stuckIndex = 0;
+		G.posy = 0;
+	}
+
+	document.onkeydown = function(e){
+		var key = e.keyCode;
+		if(G.state == "complete")
+			return;
+		G.state = "normal";
+		var changed = false;
+		switch(key) {
+			case 87: //w
+				G.posy++;
+				changed = true;
+				break;
+			case 83: //s
+				G.posy--;
+				changed = true;
+				break;
+			case 65: //a
+				G.posx--;
+				G.posy = 0;
+				break;
+			case 68: //d
+				G.posx++;
+				G.posy = 0;
+				break;
+		}
+		if(G.posx < 0)
+			G.posx = 0;
+		if(G.posy < 0)
+			G.posy = 0;
+		if(G.posx >= G.numPins)
+			G.posx = G.numPins-1;
+		if(G.posy > G.bitDepth)
+			G.posy = G.bitDepth;
+
+		//Logic for pins NOT with the lockpick
+		for(var i = 0; i < G.numPins; i++){
+			if(i == G.posx) continue;
+			if(!G.pinStuck[i]){
+				G.pinPos[i] = 0; //falls down if not stuck
+			}
+			else {
+				G.pinPos[i] = Math.min(G.pinPos[i], G.bitting[i]);
+			}
+		}
+
+		//Logic for pin WITH the lockpick
+		var i = G.posx;
+		if(G.pinStuck[i]) {
+			if(G.posy > G.bitting[i]){
+				if(G.difficulty > 1){
+					G.reset();
+					G.redraw();
+					return;
+				}
+				else if(G.difficulty > 0){
+					G.pinPos[i] = Math.max(G.bitting[i], G.posy);
+				}
+				else {
+					G.posy = Math.min(G.bitting[i], G.posy);
+				}
+			}
+			else if(G.posy <= G.bitting[i] && G.pinPos[i] > G.bitting[i]){
+				G.pinPos[i] = G.bitting[i];
+			}
+		}
+		else {
+			G.pinPos[i] = G.posy;
+		}
+		if(G.posy == G.bitting[i] && i == G.pinOrder[G.stuckIndex]){
+			G.state = "stuck";
+			G.stuckIndex++;
+			if(G.stuckIndex >= G.numPins) {
+				G.completed = true;
+				G.state = "complete";
+			}
+			G.pinStuck[i] = true;
+		}
+
+		G.redraw();
+	}
+
+	G.redraw = function(){
+			var gfx = G.mGfx;
+			gfx.clearRect(0,0,G.mFrame.width, G.mFrame.height);
+			var top = 0;
+			var left = 50;
+			var gw = 10;
+			var gh = 3;
+
+			for(var i = 0; i < G.numPins; i++){
+				if(G.pinStuck[i]){
+					gfx.fillStyle = "#0f800f";
+				}
+				else {
+					gfx.fillStyle = "#0f0f0f";
+				}
+				gfx.fillRect(left+i*(gw+3), top+(gh*(G.bitDepth - G.pinPos[i])), gw, gh);
+			}
+			if(G.difficulty > 2){
+				gfx.fillStyle = '#a0a0a0';
+				gfx.fillRect(left-1, top, G.numPins*(gw+3), G.bitDepth*(gh+1));
+			}
+			gfx.fillStyle = '#000000';
+			for(var i = 0; i < G.numPins+1; i++){
+				gfx.fillRect(left+i*(gw+3)-2, top, 1,  G.bitDepth*(gh+1));
+			}
+			gfx.fillStyle = "#a0a0ff";
+			gfx.fillRect(left+G.posx*(gw+3)+2, top+(gh*(G.bitDepth - G.posy))+gh, gw-4, G.bitDepth*gh);
+			gfx.fillRect(0, top+(gh*(G.bitDepth - G.posy))+gh + (G.bitDepth*gh), left+G.posx*(gw+3)+2 + (gw-4), gw-4);
+			switch(G.state){
+				case "normal":
+					gfx.fillStyle = 'rgba(255,255,255,0.0)';
+					break;
+				case "reset":
+					gfx.fillStyle = 'rgba(255,0,0,0.5)';
+					break;
+				case "stuck":
+					gfx.fillStyle = 'rgba(255,255,255,0.5)';
+					break;
+				case "complete":
+					gfx.fillStyle = 'rgba(0,255,0,0.5)';
+					break;
+				case "default":
+					gfx.fillStyle = 'rgba(255,255,255,1.0)';
+					break;
+
+			}
+			gfx.fillRect(0,0,G.mFrame.width,G.mFrame.height);
+			if(G.state == "complete"){
+				setTimeout(G.finish, 1000);
+			}
+			document.getElementById('solvedCounter').innerHTML = 'Pins Solved: ' + G.stuckIndex;
+	}
+	G.finish = function(){
+		document.body.removeChild(G.mFrame);
+		G.callback();
+	}
+	G.redraw();
+}
+window.onload = function(){
+	makeMinigame(window.onload, rint(5));
+}
+
+
+</script>
+</head>
+<body>
+<h2>Lockpicking</h2>
+</body>
+</html>
